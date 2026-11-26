@@ -1,0 +1,32 @@
+name: Local cluster validation
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  lab:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Exercise service and rollout logic
+        run: python3 -m unittest -v
+      - name: Install kind and kubectl
+        run: |
+          set -euo pipefail
+          bin="$RUNNER_TEMP/bin"
+          mkdir -p "$bin"
+          curl --fail --retry 3 --location --output "$bin/kind" https://kind.sigs.k8s.io/dl/v0.33.0/kind-linux-amd64
+          release=v1.36.0
+          base="https://dl.k8s.io/release/$release/bin/linux/amd64"
+          curl --fail --retry 3 --location --output "$bin/kubectl" "$base/kubectl"
+          curl --fail --retry 3 --location --output "$bin/kubectl.sha256" "$base/kubectl.sha256"
+          (cd "$bin"; echo "$(cat kubectl.sha256)  kubectl" | sha256sum --check)
+          chmod +x "$bin/kind" "$bin/kubectl"
+          echo "$bin" >> "$GITHUB_PATH"
+      - name: Validate real rollout, readiness fault and undo
+        run: python3 lab.py
